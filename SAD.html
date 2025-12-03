@@ -39,7 +39,7 @@
     .modal{background:#041225;padding:16px;border-radius:10px;width:480px;max-width:92%}
     .modal h3{margin:0 0 8px}
     footer{padding:12px;text-align:center;color:var(--muted);font-size:13px}
-    @media (max-width:900px){.board{grid-template-columns:1fr;}header{flex-direction:column;gap:8px;text-align:center}.toolbar{flex-direction:column;align-items:stretch}.form-inline{flex-direction:column;align-items:stretch}.form-inline input,.form-inline select,.form-inline button{width:100%}.search{width:100%}.search input{width:100%}.column{min-height:260px}.modal{width:95%;} }}
+    @media (max-width:900px){.board{grid-template-columns:1fr;}header{flex-direction:column;gap:8px;text-align:center}.toolbar{flex-direction:column;align-items:stretch}.form-inline{flex-direction:column;align-items:stretch}.form-inline input,.form-inline select,.form-inline button{width:100%}.search{width:100%}.search input{width:100%}.column{min-height:260px}.modal{width:95%;} }
   </style>
 </head>
 <body>
@@ -51,6 +51,7 @@
     <div class="toolbar">
       <form id="addForm" class="form-inline" onsubmit="return false;">
         <input id="title" placeholder="Ticket title" required />
+        <textarea id="desc" rows="2" placeholder="Description (optional)"></textarea>
         <select id="priority">
           <option value="low">Low</option>
           <option value="medium" selected>Medium</option>
@@ -58,8 +59,7 @@
         </select>
         <select id="columnSelect">
           <option value="todo">To Do</option>
-          <option value="inprogress">In Progress</option>
-          <option value="done">Done</option>
+          
         </select>
         <button id="addBtn">Add</button>
       </form>
@@ -131,6 +131,7 @@
     const addForm = document.getElementById('addForm')
     const titleInput = document.getElementById('title')
     const priorityInput = document.getElementById('priority')
+    const descInput = document.getElementById('desc')
     const columnSelect = document.getElementById('columnSelect')
     const searchInput = document.getElementById('search')
 
@@ -176,6 +177,25 @@
       viewBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openEdit(ticket.id) })
       controls.appendChild(viewBtn)
 
+      // auto-move button
+      const moveBtn = document.createElement('button')
+      if(ticket.column === 'todo'){
+        moveBtn.textContent = 'Start'
+        moveBtn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          ticket.column = 'inprogress';
+          save(); render(searchInput.value);
+        })
+      } else if(ticket.column === 'inprogress'){
+        moveBtn.textContent = 'Resolve'
+        moveBtn.addEventListener('click', (e)=>{
+          e.stopPropagation();
+          ticket.column = 'done';
+          save(); render(searchInput.value);
+        })
+      }
+      if(moveBtn.textContent) controls.appendChild(moveBtn)
+
       card.appendChild(meta)
       card.appendChild(title)
       card.appendChild(labels)
@@ -208,8 +228,8 @@
     // Add ticket
     document.getElementById('addBtn').addEventListener('click', ()=>{
       const title = titleInput.value.trim(); if(!title) return alert('Please enter a title')
-      const ticket = { id: Date.now().toString().slice(-6), title, desc:'', priority:priorityInput.value, column:columnSelect.value, created: Date.now() }
-      tickets.push(ticket); save(); titleInput.value=''; render(searchInput.value)
+      const ticket = { id: Date.now().toString().slice(-6), title, desc: descInput.value, priority: priorityInput.value, column: columnSelect.value, created: Date.now() }
+      tickets.push(ticket); save(); titleInput.value=''; descInput.value=''; render(searchInput.value)
     })
 
     // Search
