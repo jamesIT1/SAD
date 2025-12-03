@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Jira-like Ticketing (HTML/CSS/JS)</title>
+  <style>
+    :root{--bg:#0f1724;--card:#0b1220;--muted:#94a3b8;--accent:#06b6d4;--glass: rgba(255,255,255,0.03)}
+    *{box-sizing:border-box;font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,'Helvetica Neue',Arial}
+    body{margin:0;background:linear-gradient(180deg,#071428 0%, #071a2a 60%);color:#e6eef6;min-height:100vh}
+    header{display:flex;align-items:center;justify-content:space-between;padding:18px 24px;border-bottom:1px solid rgba(255,255,255,0.03)}
+    header h1{margin:0;font-size:18px}
+    .container{padding:18px;max-width:1200px;margin:0 auto}
+    .toolbar{display:flex;gap:8px;align-items:center;margin-bottom:14px}
+    .form-inline{display:flex;gap:8px;align-items:center}
+    input,select,textarea,button{background:var(--glass);border:1px solid rgba(255,255,255,0.04);color:inherit;padding:8px;border-radius:8px}
+    input::placeholder{color:var(--muted)}
+    button{cursor:pointer}
+    .board{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+    .column{background: linear-gradient(180deg, rgba(255,255,255,0.02), transparent);padding:12px;border-radius:10px;min-height:320px}
+    .col-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+    .tickets{display:flex;flex-direction:column;gap:8px;min-height:200px}
+    .card{background:linear-gradient(180deg,#071a2a,#071827);padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);cursor:grab}
+    .card.dragging{opacity:0.6;transform:scale(1.02)}
+    .meta{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:var(--muted)}
+    .title{font-weight:600;margin:6px 0}
+    .labels{display:flex;gap:6px}
+    .label{padding:4px 8px;border-radius:999px;font-size:12px}
+    .prio-high{background:#ffead0;color:#7a2b00}
+    .prio-med{background:#fff2e6;color:#7a3b00}
+    .prio-low{background:#e6fff7;color:#044b3a}
+    .controls{display:flex;gap:6px;margin-top:8px}
+    .controls button{font-size:12px;padding:6px 8px}
+    .search{margin-left:auto}
+    .muted{color:var(--muted);font-size:13px}
+    .empty{opacity:0.45;padding:10px;border-radius:6px;text-align:center;border:1px dashed rgba(255,255,255,0.02)}
+    /* modal */
+    .modal-backdrop{position:fixed;inset:0;background:rgba(2,6,23,0.6);display:none;align-items:center;justify-content:center}
+    .modal{background:#041225;padding:16px;border-radius:10px;width:480px;max-width:92%}
+    .modal h3{margin:0 0 8px}
+    footer{padding:12px;text-align:center;color:var(--muted);font-size:13px}
+    @media (max-width:900px){.board{grid-template-columns:1fr;}}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Simple Jira-like Ticketing</h1>
+    <div class="muted">No backend — data saved locally in your browser</div>
+  </header>
+  <main class="container">
+    <div class="toolbar">
+      <form id="addForm" class="form-inline" onsubmit="return false;">
+        <input id="title" placeholder="Ticket title" required />
+        <select id="priority">
+          <option value="low">Low</option>
+          <option value="medium" selected>Medium</option>
+          <option value="high">High</option>
+        </select>
+        <select id="columnSelect">
+          <option value="todo">To Do</option>
+          <option value="inprogress">In Progress</option>
+          <option value="done">Done</option>
+        </select>
+        <button id="addBtn">Add</button>
+      </form>
+      <div class="search">
+        <input id="search" placeholder="Search tickets..." />
+      </div>
+    </div>
+
+    <div class="board">
+      <section class="column" data-id="todo">
+        <div class="col-head"><strong>To Do</strong><span class="muted" id="count-todo">0</span></div>
+        <div class="tickets" id="todo"></div>
+      </section>
+      <section class="column" data-id="inprogress">
+        <div class="col-head"><strong>In Progress</strong><span class="muted" id="count-inprogress">0</span></div>
+        <div class="tickets" id="inprogress"></div>
+      </section>
+      <section class="column" data-id="done">
+        <div class="col-head"><strong>Done</strong><span class="muted" id="count-done">0</span></div>
+        <div class="tickets" id="done"></div>
+      </section>
+    </div>
+
+    <div style="height:12px"></div>
+    <div class="muted">Tip: drag tickets between columns. Click a ticket to edit details.</div>
+  </main>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true">
+      <h3 id="modalTitle">Edit Ticket</h3>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-top:8px">
+        <input id="editTitle" />
+        <textarea id="editDesc" rows="4" placeholder="Description (optional)"></textarea>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label>Priority</label>
+          <select id="editPriority">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+          <label>Column</label>
+          <select id="editColumn">
+            <option value="todo">To Do</option>
+            <option value="inprogress">In Progress</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button id="deleteBtn">Delete</button>
+          <button id="saveBtn">Save</button>
+          <button id="closeBtn">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>Local storage persistence • Simple drag & drop • Built with HTML/CSS/JS</footer>
+
+  <script>
+    // Simple single-file ticketing system
+    const STORAGE_KEY = 'simple_jira_tickets_v1'
+    let tickets = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]')
+    const columns = ['todo','inprogress','done']
+
+    // DOM refs
+    const todoEl = document.getElementById('todo')
+    const inprogressEl = document.getElementById('inprogress')
+    const doneEl = document.getElementById('done')
+    const addForm = document.getElementById('addForm')
+    const titleInput = document.getElementById('title')
+    const priorityInput = document.getElementById('priority')
+    const columnSelect = document.getElementById('columnSelect')
+    const searchInput = document.getElementById('search')
+
+    const modalBackdrop = document.getElementById('modalBackdrop')
+    const editTitle = document.getElementById('editTitle')
+    const editDesc = document.getElementById('editDesc')
+    const editPriority = document.getElementById('editPriority')
+    const editColumn = document.getElementById('editColumn')
+    const saveBtn = document.getElementById('saveBtn')
+    const closeBtn = document.getElementById('closeBtn')
+    const deleteBtn = document.getElementById('deleteBtn')
+    const modalTitle = document.getElementById('modalTitle')
+
+    let currentEditId = null
+
+    function save() { localStorage.setItem(STORAGE_KEY, JSON.stringify(tickets)) }
+
+    function createTicketDOM(ticket) {
+      const card = document.createElement('div')
+      card.className = 'card'
+      card.draggable = true
+      card.dataset.id = ticket.id
+
+      const meta = document.createElement('div')
+      meta.className = 'meta'
+      meta.innerHTML = `<span class="muted">#${ticket.id}</span><span class="muted">${new Date(ticket.created).toLocaleString()}</span>`
+
+      const title = document.createElement('div')
+      title.className = 'title'
+      title.textContent = ticket.title
+
+      const labels = document.createElement('div')
+      labels.className = 'labels'
+      const prio = document.createElement('div')
+      prio.className = 'label ' + (ticket.priority === 'high' ? 'prio-high' : ticket.priority === 'medium' ? 'prio-med' : 'prio-low')
+      prio.textContent = ticket.priority.charAt(0).toUpperCase() + ticket.priority.slice(1)
+      labels.appendChild(prio)
+
+      const controls = document.createElement('div')
+      controls.className = 'controls'
+      const viewBtn = document.createElement('button')
+      viewBtn.textContent = 'Open'
+      viewBtn.addEventListener('click', (e)=>{ e.stopPropagation(); openEdit(ticket.id) })
+      controls.appendChild(viewBtn)
+
+      card.appendChild(meta)
+      card.appendChild(title)
+      card.appendChild(labels)
+      card.appendChild(controls)
+
+      // click anywhere on card opens modal
+      card.addEventListener('click', ()=> openEdit(ticket.id))
+
+      // drag events
+      card.addEventListener('dragstart', (e)=>{ card.classList.add('dragging'); e.dataTransfer.setData('text/plain', ticket.id) })
+      card.addEventListener('dragend', ()=>{ card.classList.remove('dragging') })
+
+      return card
+    }
+
+    function render(filterText=''){
+      // clear columns
+      columns.forEach(c=> document.getElementById(c).innerHTML = '')
+      // filter and place
+      const filtered = tickets.filter(t => (t.title + (t.desc||'')).toLowerCase().includes(filterText.toLowerCase()))
+      columns.forEach(col=>{
+        const target = document.getElementById(col)
+        const list = filtered.filter(t=>t.column === col)
+        if(list.length===0){ const empty = document.createElement('div'); empty.className='empty'; empty.textContent='No tickets'; target.appendChild(empty)}
+        list.forEach(t=> target.appendChild(createTicketDOM(t)))
+        document.getElementById('count-'+col).textContent = list.length
+      })
+    }
+
+    // Add ticket
+    document.getElementById('addBtn').addEventListener('click', ()=>{
+      const title = titleInput.value.trim(); if(!title) return alert('Please enter a title')
+      const ticket = { id: Date.now().toString().slice(-6), title, desc:'', priority:priorityInput.value, column:columnSelect.value, created: Date.now() }
+      tickets.push(ticket); save(); titleInput.value=''; render(searchInput.value)
+    })
+
+    // Search
+    searchInput.addEventListener('input', ()=> render(searchInput.value))
+
+    // Drag & drop for columns
+    document.querySelectorAll('.column').forEach(colEl=>{
+      colEl.addEventListener('dragover', (e)=>{ e.preventDefault(); colEl.style.outline='2px dashed rgba(255,255,255,0.04)' })
+      colEl.addEventListener('dragleave', ()=>{ colEl.style.outline='none' })
+      colEl.addEventListener('drop', (e)=>{
+        e.preventDefault(); colEl.style.outline='none'
+        const id = e.dataTransfer.getData('text/plain')
+        const t = tickets.find(x=>x.id===id)
+        if(t){ t.column = colEl.dataset.id; save(); render(searchInput.value) }
+      })
+    })
+
+    // Edit modal actions
+    function openEdit(id){
+      const t = tickets.find(x=>x.id===id); if(!t) return
+      currentEditId = id
+      modalTitle.textContent = `Edit #${t.id}`
+      editTitle.value = t.title
+      editDesc.value = t.desc||''
+      editPriority.value = t.priority
+      editColumn.value = t.column
+      modalBackdrop.style.display = 'flex'
+    }
+
+    closeBtn.addEventListener('click', ()=>{ modalBackdrop.style.display='none'; currentEditId=null })
+    modalBackdrop.addEventListener('click', (e)=>{ if(e.target===modalBackdrop){ modalBackdrop.style.display='none'; currentEditId=null } })
+
+    saveBtn.addEventListener('click', ()=>{
+      if(!currentEditId) return
+      const t = tickets.find(x=>x.id===currentEditId); if(!t) return
+      t.title = editTitle.value.trim() || t.title
+      t.desc = editDesc.value
+      t.priority = editPriority.value
+      t.column = editColumn.value
+      save(); render(searchInput.value); modalBackdrop.style.display='none'; currentEditId=null
+    })
+
+    deleteBtn.addEventListener('click', ()=>{
+      if(!currentEditId) return
+      if(!confirm('Delete this ticket?')) return
+      tickets = tickets.filter(x=>x.id!==currentEditId)
+      save(); render(searchInput.value); modalBackdrop.style.display='none'; currentEditId=null
+    })
+
+    // initialize demo data if empty
+    if(tickets.length===0){
+      tickets.push({id:'100001',title:'Welcome — try dragging me',desc:'This is a demo ticket',priority:'medium',column:'todo',created:Date.now()})
+      tickets.push({id:'100002',title:'Fix login bug',desc:'Users sometimes get 500',priority:'high',column:'inprogress',created:Date.now()})
+      tickets.push({id:'100003',title:'Wipe old logs',desc:'Cleanup storage',priority:'low',column:'done',created:Date.now()})
+      save()
+    }
+
+    render()
+
+    // keyboard shortcuts: N to focus new title, / to search
+    window.addEventListener('keydown', (e)=>{
+      if(e.key==='n' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); titleInput.focus(); }
+      if(e.key==='/' && document.activeElement!==searchInput){ e.preventDefault(); searchInput.focus(); }
+    })
+  </script>
+</body>
+</html>
